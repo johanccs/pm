@@ -32,6 +32,9 @@ Goal: Docker infrastructure running locally, serving a hello-world page and a wo
 - [x] Create `scripts/stop.ps1` (Windows) — `docker compose down`
 - [x] Build and run container; verify endpoints manually
 
+**Design decisions**
+- Dockerfile reads Python dependencies from `pyproject.toml` at build time using Python's built-in `tomllib`, so the install step never goes stale when new packages are added.
+
 **Tests & success criteria**
 - Container builds without errors
 - `GET http://localhost:8000/hello` → 200, HTML body
@@ -85,10 +88,10 @@ Goal: Users must log in before seeing the board; session managed via cookie.
 
 Goal: Agreed SQLite schema before any DB code is written.
 
-- [ ] Design schema: `users`, `boards`, `columns`, `cards` tables
-- [ ] Save schema as `docs/schema.json`
-- [ ] Write `docs/DATABASE.md` — explains tables, columns, relationships, and design decisions
-- [ ] Get user sign-off before proceeding to Part 6
+- [x] Design schema: `users`, `boards`, `columns`, `cards` tables
+- [x] Save schema as `docs/schema.json`
+- [x] Write `docs/DATABASE.md` — explains tables, columns, relationships, and design decisions
+- [x] Get user sign-off before proceeding to Part 6
 
 **Schema (draft)**
 ```
@@ -108,14 +111,18 @@ cards(id, column_id, title, details, position)
 
 Goal: Full CRUD API backed by SQLite; database created automatically on first run.
 
-- [ ] Create `backend/database.py` — `init_db()` creates tables from schema if they don't exist, seeds `user` account and a default board
-- [ ] Call `init_db()` at FastAPI startup
-- [ ] `GET /api/board` — returns full board JSON for authenticated user
-- [ ] `PUT /api/board/columns/{id}` — rename a column
-- [ ] `POST /api/board/cards` — create a card in a column
-- [ ] `PUT /api/board/cards/{id}` — update card title/details and/or move to different column/position
-- [ ] `DELETE /api/board/cards/{id}` — remove a card
-- [ ] Write pytest tests for every route (fresh in-memory SQLite per test)
+- [x] Create `backend/database.py` — `init_db()` creates tables if they don't exist; seeds `user` account, default board, and 5 columns on first run; seeds 8 demo cards whenever the board has no cards (handles both fresh DB and existing DB from a prior run)
+- [x] Call `init_db()` at FastAPI startup (lifespan handler)
+- [x] `GET /api/board` — returns full board JSON for authenticated user
+- [x] `PUT /api/board/columns/{id}` — rename a column
+- [x] `POST /api/board/cards` — create a card in a column
+- [x] `PUT /api/board/cards/{id}` — update card title/details and/or move to different column/position
+- [x] `DELETE /api/board/cards/{id}` — remove a card
+- [x] Write pytest tests for every route (fresh SQLite temp file per test)
+
+**Design decisions**
+- All API routes return numeric string IDs (`"1"`, `"2"`, …) — the frontend adds prefixes (see Part 7)
+- `init_db()` is idempotent: safe to call on every startup; seed cards are only inserted when the board is empty, so user data is never wiped
 
 **Tests & success criteria**
 - All routes return correct status codes and shapes
@@ -130,13 +137,17 @@ Goal: Full CRUD API backed by SQLite; database created automatically on first ru
 
 Goal: Kanban board reads and writes to the backend; state persists across page reloads.
 
-- [ ] Create `frontend/src/lib/api.ts` — typed fetch helpers for all backend routes
-- [ ] Update `KanbanBoard.tsx` — load board from `GET /api/board` on mount
-- [ ] Column rename: call `PUT /api/board/columns/{id}` (optimistic update)
-- [ ] Add card: call `POST /api/board/cards` (optimistic update)
-- [ ] Delete card: call `DELETE /api/board/cards/{id}` (optimistic update)
-- [ ] Drag-and-drop: call `PUT /api/board/cards/{id}` on drag end (optimistic update, rollback on error)
-- [ ] Handle loading and error states simply (no spinners needed, just no broken UI)
+- [x] Create `frontend/src/lib/api.ts` — typed fetch helpers for all backend routes; prefixes all IDs from the backend (`col-{n}` / `card-{n}`) and strips the prefix before writing back
+- [x] Update `KanbanBoard.tsx` — load board from `GET /api/board` on mount
+- [x] Column rename: call `PUT /api/board/columns/{id}` (optimistic update)
+- [x] Add card: call `POST /api/board/cards` then update state with real ID
+- [x] Delete card: call `DELETE /api/board/cards/{id}` (optimistic update)
+- [x] Drag-and-drop: call `PUT /api/board/cards/{id}` on drag end (optimistic update, rollback on error)
+- [x] Handle loading state (return null until board is fetched)
+
+**Design decisions**
+- Backend returns raw integer IDs; `api.ts` adds `col-` / `card-` prefixes before storing in React state. This prevents `isColumnId()` in `kanban.ts` from falsely matching card IDs against column IDs (SQLite autoincrement gives both sequences starting at 1).
+- All board mutations use optimistic updates with rollback on API error.
 
 **Tests & success criteria**
 - Vitest: all API helpers mocked, component tests updated
@@ -149,15 +160,19 @@ Goal: Kanban board reads and writes to the backend; state persists across page r
 
 Goal: Backend can call OpenRouter; connectivity verified with a simple prompt.
 
-- [ ] Add `openai` package to `backend/pyproject.toml`
-- [ ] Create `backend/ai.py` — OpenRouter client using `openai` SDK pointed at `https://openrouter.ai/api/v1`, model `deepseek/deepseek-chat-v3-0324:free`
-- [ ] Add `POST /api/ai/ping` — sends `"What is 2+2?"` to the model, returns `{"reply": "<model response>"}`
-- [ ] Load `OPENROUTER_API_KEY` from environment (passed via `docker-compose.yml` from host `.env`)
+- [x] Add `openai` package to `backend/pyproject.toml`
+- [x] Create `backend/ai.py` — OpenRouter client using `openai` SDK pointed at `https://openrouter.ai/api/v1`, model `deepseek/deepseek-chat-v3-0324` (`:free` variant removed from OpenRouter)
+- [x] Add `POST /api/ai/ping` — sends `"What is 2+2?"` to the model, returns `{"reply": "<model response>"}`
+- [x] Load `OPENROUTER_API_KEY` from environment (passed via `docker-compose.yml` from host `.env`)
+
+**Design decisions**
+- `POST /api/ai/ping` requires authentication (same session cookie as all other API routes).
+- The OpenAI client is a lazy singleton in `get_client()` — instantiated once on first request so the missing `OPENROUTER_API_KEY` at test time doesn't cause import errors.
 
 **Tests & success criteria**
-- Unit test: `ai.py` with mocked HTTP returns correctly shaped response
-- Integration test (manual or skipped in CI): `POST /api/ai/ping` returns a reply containing "4"
-- API key is never logged or exposed in responses
+- Unit test: `ai.py` with mocked HTTP returns correctly shaped response ✓
+- Integration test (manual): `POST /api/ai/ping` returns a reply containing "4" ✓
+- API key is never logged or exposed in responses ✓
 
 ---
 
@@ -165,11 +180,11 @@ Goal: Backend can call OpenRouter; connectivity verified with a simple prompt.
 
 Goal: AI receives full board context and can optionally update the board via structured outputs.
 
-- [ ] Define Pydantic response schema: `AIResponse { reply: str, board_update: BoardPatch | None }`
-- [ ] Define `BoardPatch` — list of card create/update/delete/move operations
-- [ ] Create `POST /api/ai/chat` — accepts `{ message: str, history: [{role, content}] }`; loads board for user; calls AI with system prompt (board JSON + instructions) + history + message; parses structured output; applies `board_update` if present; returns `{ reply, board }` (updated board)
-- [ ] System prompt instructs AI to respond in the defined JSON schema
-- [ ] Write pytest tests: prompt construction, mock AI responses with and without `board_update`, board mutation logic
+- [x] Define Pydantic response schema: `AIResponse { reply: str, board_update: BoardPatch | None }`
+- [x] Define `BoardPatch` — list of card create/update/delete/move operations
+- [x] Create `POST /api/ai/chat` — accepts `{ message: str, history: [{role, content}] }`; loads board for user; calls AI with system prompt (board JSON + instructions) + history + message; parses structured output; applies `board_update` if present; returns `{ reply, board }` (updated board)
+- [x] System prompt instructs AI to respond in the defined JSON schema
+- [x] Write pytest tests: prompt construction, mock AI responses with and without `board_update`, board mutation logic
 
 **Tests & success criteria**
 - Unit test: message with no board change → `board_update` is null, board unchanged
@@ -183,12 +198,12 @@ Goal: AI receives full board context and can optionally update the board via str
 
 Goal: Beautiful AI chat sidebar in the UI; board updates automatically when AI changes it.
 
-- [ ] Create `frontend/src/components/AISidebar.tsx` — collapsible panel, chat history list, text input + send button
-- [ ] Wire to `POST /api/ai/chat`; show assistant reply in history
-- [ ] On response: if board changed, update `KanbanBoard` state directly (no page reload)
-- [ ] Style sidebar with project colors: purple send button, navy headings, yellow accent for AI messages
-- [ ] Toggle sidebar open/closed from a button in the board header
-- [ ] Handle loading state (disable input while waiting)
+- [x] Create `frontend/src/components/AISidebar.tsx` — collapsible panel, chat history list, text input + send button
+- [x] Wire to `POST /api/ai/chat`; show assistant reply in history
+- [x] On response: if board changed, update `KanbanBoard` state directly (no page reload)
+- [x] Style sidebar with project colors: purple send button, navy headings, yellow accent for AI messages
+- [x] Toggle sidebar open/closed from a button in the board header
+- [x] Handle loading state (disable input while waiting)
 
 **Tests & success criteria**
 - Playwright e2e: open sidebar, type "Add a card called Test AI to the first column", send, see reply, see card appear on board without page reload

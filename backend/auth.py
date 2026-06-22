@@ -1,16 +1,11 @@
-import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, HTTPException, Response
 from pydantic import BaseModel
 
+from backend import database
+
 router = APIRouter(prefix="/api/auth")
-
-# In-memory session store: token -> username
-_sessions: dict[str, str] = {}
-
-USERNAME = "user"
-PASSWORD = "password"
 
 
 class LoginRequest(BaseModel):
@@ -19,25 +14,32 @@ class LoginRequest(BaseModel):
 
 
 def get_current_user(session: Optional[str] = Cookie(default=None)) -> str:
-    if not session or session not in _sessions:
+    if not session:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return _sessions[session]
+    username = database.get_username_for_session(session)
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return username
+
+
+def clear_sessions() -> None:
+    database.clear_all_sessions()
 
 
 @router.post("/login")
 def login(body: LoginRequest, response: Response):
-    if body.username != USERNAME or body.password != PASSWORD:
+    stored_hash = database.get_user_password_hash(body.username)
+    if not stored_hash or not database.verify_password(body.password, stored_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = secrets.token_hex(32)
-    _sessions[token] = body.username
-    response.set_cookie("session", token, httponly=True, samesite="lax")
+    token = database.create_session(body.username)
+    response.set_cookie("session", token, httponly=True, samesite="strict")
     return {"ok": True}
 
 
 @router.post("/logout")
 def logout(response: Response, session: Optional[str] = Cookie(default=None)):
     if session:
-        _sessions.pop(session, None)
+        database.delete_session(session)
     response.delete_cookie("session")
     return {"ok": True}
 

@@ -13,9 +13,13 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# Install Python dependencies
+# Install Python dependencies — read directly from pyproject.toml so this
+# step never goes stale when new packages are added.
 COPY backend/pyproject.toml ./
-RUN uv pip install --system --no-cache fastapi "uvicorn[standard]" aiofiles
+RUN python3 -c \
+      "import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print('\n'.join(d['project']['dependencies']))" \
+      > /tmp/requirements.txt && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt
 
 # Copy backend source and built frontend
 COPY backend/ ./backend/

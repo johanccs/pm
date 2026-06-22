@@ -1,0 +1,41 @@
+{
+  "tables": {
+    "users": {
+      "columns": {
+        "id":            { "type": "INTEGER", "primaryKey": true, "autoIncrement": true },
+        "username":      { "type": "TEXT",    "notNull": true, "unique": true },
+        "password_hash": { "type": "TEXT",    "notNull": true }
+      }
+    },
+    "boards": {
+      "columns": {
+        "id":      { "type": "INTEGER", "primaryKey": true, "autoIncrement": true },
+        "user_id": { "type": "INTEGER", "notNull": true, "references": "users.id" },
+        "title":   { "type": "TEXT",    "notNull": true }
+      }
+    },
+    "columns": {
+      "columns": {
+        "id":       { "type": "INTEGER", "primaryKey": true, "autoIncrement": true },
+        "board_id": { "type": "INTEGER", "notNull": true, "references": "boards.id" },
+        "title":    { "type": "TEXT",    "notNull": true },
+        "position": { "type": "INTEGER", "notNull": true }
+      }
+    },
+    "cards": {
+      "columns": {
+        "id":        { "type": "INTEGER", "primaryKey": true, "autoIncrement": true },
+        "column_id": { "type": "INTEGER", "notNull": true, "references": "columns.id" },
+        "title":     { "type": "TEXT",    "notNull": true },
+        "details":   { "type": "TEXT",    "notNull": false, "default": "" },
+        "position":  { "type": "INTEGER", "notNull": true }
+      }
+    }
+  },
+  "notes": {
+    "mvp_seed": "On first run, insert user 'user' and one default board with 5 columns and no cards.",
+    "password_hash": "For the MVP the password is hardcoded in code; password_hash is stored as a bcrypt hash for future real auth.",
+    "position": "Cards and columns use an integer position (0-based) for ordering. Positions are compacted (0, 1, 2 ...) after any move or delete.",
+    "one_board_per_user": "MVP enforces one board per user at the application layer, not the database layer."
+  }
+}

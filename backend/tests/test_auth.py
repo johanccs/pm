@@ -1,16 +1,18 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend import auth
+from backend import database
 
 
 @pytest.fixture(autouse=True)
-def clear_sessions():
-    """Reset session store between tests."""
-    auth._sessions.clear()
+def isolated_db(tmp_path):
+    db_file = str(tmp_path / "test.db")
+    os.environ["DB_PATH"] = db_file
+    database.init_db()
     yield
-    auth._sessions.clear()
+    del os.environ["DB_PATH"]
 
 
 @pytest.fixture

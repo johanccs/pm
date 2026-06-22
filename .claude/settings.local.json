@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(npm run *)",
+      "Bash(powershell -File scripts/start.ps1)",
+      "Bash(npx playwright *)",
+      "Bash(Test-Path *)",
+      "PowerShell(Test-Path *)"
+    ]
+  }
+}

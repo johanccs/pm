@@ -1,14 +1,27 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.ai import router as ai_router
 from backend.auth import router as auth_router
+from backend.board import router as board_router
+from backend.database import init_db
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth_router)
+app.include_router(board_router)
+app.include_router(ai_router)
 
 
 @app.get("/hello", response_class=HTMLResponse)
